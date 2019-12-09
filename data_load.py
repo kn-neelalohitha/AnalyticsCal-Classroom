@@ -1,7 +1,16 @@
 import csv
 import pymysql
 import os
+import mysql.connector
+def connection():
+    conn = mysql.connector.connect(host = "localhost",
+                  user = 'root',
+                  password = 'toortoor',
+                  database = 'login_page',
+                  auth_plugin='mysql_native_password')
 
+    c = conn.cursor()
+    return c , conn
 def load_csv_file(filename):
     with open(filename, 'r') as f:
         reader = csv.reader(f)
