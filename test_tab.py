@@ -26,16 +26,17 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from tabulate import tabulate   # for table
-import pandas as pd
-import numpy as np
-from scipy import stats
-import seaborn as sns
+import pandas as pd # For plotting only - multiple linear regression
+import numpy as np  # for plotting only - multiple linear regression
+from scipy import stats # For table lookup
+import seaborn as sns # For plotting only- multiple linear regression
 
 
 import stats_team3 as st
 #import Partial_Correlation_Coeff_XYZ as pcc_xyz
 import multilinear_regression as mlr
 import data_load as load
+from computed_values import Computed as computedmodel
 import file_upload as upload
 from ac_classes import IndivModel as imodel
 from ac_classes import BiDataModel as bdmodel
@@ -54,6 +55,9 @@ win.title("AnalyticsCal")
 global csvList,x, y,X,Y,data,multi_data,Y_predicted,is_simple_linear_equations
 global csvHeader
 global file_name
+global computed
+global cursor
+
 is_simple_linear_equations=False
 #-------------------------------------------------------------------------Plots
 
@@ -80,17 +84,20 @@ def open_file():
     global file_name
     global csvHeader
     global multi_df
+    global cursor
     file = fd.askopenfile(mode='r', filetypes=[('CSV Files', '*.csv')]) # gets the filename as string
     if file:
         file_name = file.name
     print(file_name)
     click_clear()
+    cursor = load.get_connection()
     csvHeader, csvList = upload.preprocess_csv(file_name)
     if len(csvHeader) > 2: # Multinomial
         multi_df = pd.read_csv(file_name)
         print(multi_df[~multi_df.applymap(np.isreal).all(1)])
         null_columns=multi_df.columns[multi_df.isnull().any()]
         print(multi_df[multi_df.isnull().any(axis=1)][null_columns].head())
+        load.load_and_filter_data_opeartion(cursor,file_name)
     create_data_list() # creates a separate 
     """
     database function has to be called here 
@@ -191,8 +198,9 @@ textBox = tk.Text(mighty1, height = text_h, width = text_w,wrap=tk.WORD)
 textBox.grid(column=0, row=5, sticky=tk.N+tk.S)
 
 def create_data_list():
-    global x,y,X,Y, data, multi_data
+    global x,y,X,Y, data, multi_data, computed
     if csvList != []:
+        computed = computedmodel(file_name, cursor)
         if len(csvHeader) <= 2:
             x = [float(i) for i in csvList[0]]
             y = [float(i) for i in csvList[-1]]
@@ -224,16 +232,20 @@ def create_instance():
         Y.mean()
         X.var()
         Y.var()
+        computed.save_computed("imodel_X", X)
+        computed.save_computed("imodel_Y", Y)
         data.corr_coeff()
         data.nlr_coef()
         data.anova()
         data.models()
         data.pred_model()
         data.outliers()
+        computed.save_computed("bi_data", data)
     else:
         multi_data.x_stats()
         multi_data.y_stats()
         multi_data.linear_regression_coeff()
+        computed.save_computed("multi_data", multi_data)
         
 def round_off_list(my_list, precision):
     return [round(_, precision) for _ in my_list]
@@ -435,6 +447,7 @@ def click_linear_regression():
         coeff_m = coeff
         textBox.delete(1.0, tk.END)
         textBox.insert(tk.INSERT,"The Linear Regression Equation is\n " + equation_str)
+        computed.save_computed("multi_data", multi_data)
         #textBox.tag_add("one", "1.0", "1.8")
         #textBox.tag_config("one", background="yellow"_norm)
 
@@ -565,6 +578,7 @@ def stats_display(coeff):
         multi_data.lin_reg_coeff = []
         multi_data.lin_reg_coeff  = [round(coeff[i], roundoff) for i in range(n)]
         multi_data.lin_reg_eqn = equation_str
+        computed.save_computed("multi_data", multi_data)
         print('hi',equation_str)
         return equation_str
         #textBox.delete(1.0, tk.END)
@@ -602,20 +616,25 @@ def stats_display(coeff):
         data.linear['eqn'] = str_1
         data.pred_eqn = data.linear['eqn']
         data.pred_model = data.linear['coeff']
-        title= "Predicted vs Observed"					
+        title= "Predicted vs Observed"
         x_label= 'X'					
         y_label= 'Y'
         reg_plot(X.values, Y.values, Y_predicted, equation_str, title, x_label, y_label, 'g')
         plt.show()
+
+        computed.save_computed("Y_predicted",Y_predicted)
+        computed.save_computed("bi_data", data)
+
         return equation_str
     
 
 def form_eqn_mlr(coeff):
-    global multi_data
+    global multi_data,computed
     temp = []
     for i in range(len(multi_data.x[0])):
         temp.append(coeff[0]+ coeff[1]*multi_data.x[0][i] +coeff[2]*multi_data.x[1][i] + coeff[3]*multi_data.x[2][i])
     print('form_eqn_mlr',temp)
+    computed.save_computed("multi_data", multi_data)
     return temp
 
 # Add button to Regression
@@ -629,6 +648,7 @@ linear_Regression.grid(column=0, row=2, sticky='W', padx = 10,pady = 2)
 # Poly_reg:Modified Button Click Function
 def click_nlr_poly():
     global Y_predicted,is_simple_linear_equations,is_bivariate
+    global computed
     is_simple_linear_equations=False
     is_bivariate = True
     if len(csvHeader) <= 2:
@@ -696,6 +716,8 @@ def click_nlr_poly():
         #plt.legend([red_dot, (red_dot, white_cross)], ["Attr A", "Attr A+B"])
         reg_plot(X.values, Y.values, Y_predicted, equation_str, title, x_label, y_label, 'r')
         plt.show()
+
+        computed.save_computed("bi_data", data)
     else:
         global multi_data
         textBox.delete(1.0, tk.END)
@@ -735,6 +757,9 @@ def click_nlr_sin():
         coefficient = regression.sinusoidal(4)
         textBox.delete(1.0, tk.END)
         textBox.insert(tk.INSERT, str(coefficient))
+        
+        computed.save_computed("bi_data", data)
+
     else:
         textBox.delete(1.0, tk.END)
         textBox.insert(tk.INSERT, "Sinusoidal Regression works for bivariate data only\n")
@@ -765,6 +790,9 @@ def click_nlr_exp():
         #print(coefficient_str)
         textBox.delete(1.0, tk.END)
         textBox.insert(tk.INSERT, coefficient_str[0]+'e^'+coefficient_str[1]+'x')
+
+        computed.save_computed("bi_data", data)
+
     else:
         textBox.delete(1.0, tk.END)
         textBox.insert(tk.INSERT, "Exponential Regression works for bivariate data only\n")
@@ -791,6 +819,9 @@ def click_nlr_exp_trf():
         #print(coefficient_str)
         textBox.delete(1.0, tk.END)
         textBox.insert(tk.INSERT, coefficient_str[0]+'e^'+coefficient_str[1]+'x')
+
+        computed.save_computed("bi_data", data)
+
     else:
         textBox.delete(1.0, tk.END)
         textBox.insert(tk.INSERT, "Exponential Transformation implemented for bivariate data only\n")
@@ -870,8 +901,9 @@ def click_anova():
 
         elif reg_order == 1:
             data.linear['f'] = round(data.f, precision)  
-            data.linear['p'] = round(data.p, precision) 
+            data.linear['p'] = round(data.p, precision)
 
+        computed.save_computed("bi_data", data)
 
         #if(is_simple_linear_equations):
          #   textBox.insert(tk.INSERT, "\n\n Confidence Interval:\n")
@@ -901,7 +933,7 @@ def click_anova():
         textBox.insert(tk.INSERT,tabulate(table,['Source','df','SS','MS','F','P'],tablefmt="fancy_grid", floatfmt=".2f")) 
         textBox.insert(tk.INSERT, "\n")
         
-        
+        computed.save_computed("multi_data", multi_data)
     
 
 # Add button for ANOVA
@@ -1124,6 +1156,8 @@ def click_comparison():
         
         predict_model = ["",'linear','poly_2','poly_3', 'poly_4']
         print("Max_f_table",max_f_table)
+
+        computed.save_computed("bi_data", data)
     """
             if(max_f_table == 1):
                 data.pred_model = data.linear['coeff']
